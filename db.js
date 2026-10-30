@@ -1,17 +1,8 @@
 import mysql from "mysql2/promise";
-import dotenv from "dotenv";
-dotenv.config();
+import { config } from "./config.js";
 
-export const db = await mysql.createConnection({
-    host: process.env.DB_HOST || "localhost",
-    user: process.env.DB_USER || "root",
-    password: process.env.DB_PASSWORD || "",
-    database: process.env.DB_NAME || "mydatabase",
+// createConnection establishes the connection; a failure must stop startup.
+export const db = await mysql.createConnection(config.db).catch(() => {
+  throw new Error("Database connection failed; check database configuration.");
 });
-
-try {
-    await db.connect();
-    console.log("DB 연결 성공");
-} catch (err) {
-    console.error("DB 연결 실패", err);
-}
+console.log("DB 연결 성공");

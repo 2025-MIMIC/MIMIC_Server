@@ -4,8 +4,7 @@
 import express from "express";
 import fetch from "node-fetch";      // 서버 측에서 Gemini API 호출할 때 사용
 import cors from "cors";
-import dotenv from "dotenv";         // 환경변수 관리
-import mysql from "mysql2/promise";  // MySQL 비동기 연결을 위한 모듈
+import { config } from "./config.js";
 
 // 라우터 모듈 (역할별로 분리)
 import api from "./routes/index.js";
@@ -14,34 +13,14 @@ import userRouter from './routes/user.js';
 import loginRouter from "./routes/login.js";
 import chatRouter from "./routes/chat.js";
 
-dotenv.config(); // .env 파일 로드
+// Configuration is validated before a database connection or server startup.
 
 const app = express();
 app.use(cors());            // CORS 에러 방지
 app.use(express.json());    // JSON 바디 파싱
 
 
-// ------------------------------
-// MySQL 연결 설정
-// ------------------------------
-// 발표 포인트:
-// - DB 연결을 서버 시작 시점에 1회만 설정
-// - mysql2/promise 사용으로 async/await 가능
-const db = await mysql.createConnection({
-  host: process.env.DB_HOST || "localhost",
-  user: process.env.DB_USER || "root",
-  password: process.env.DB_PASSWORD || "",
-  database: process.env.DB_NAME || "mydatabase",
-});
-
-try {
-  await db.connect();
-  console.log("MySQL connected successfully!");
-} catch (err) {
-  // 발표 포인트: 연결 실패 시 서버 종료 또는 에러 로그 필요
-  console.error("MySQL connection failed:", err);
-}
-
+// Database access is shared through db.js by all route modules.
 
 // ------------------------------
 // 라우팅 구조
@@ -64,19 +43,13 @@ app.use("/api/chat", chatRouter);     // 채팅 기능
 // - 요청/응답 구조를 직접 핸들링할 수 있음
 app.post("/api/gemini", async (req, res) => {
   const { prompt } = req.body;
-  const API_KEY = process.env.GEMINI_API_KEY;
-  
-  if (!API_KEY) {
-    return res.status(500).json({ error: "API 키가 없습니다" });
-  }
-  
-  const url = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
+  const url = "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent";
 
   try {
     // Gemini API 서버로 직접 HTTP POST 요청
     const response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-goog-api-key": config.geminiApiKey },
       body: JSON.stringify({
         contents: [{
           parts: [{ text: prompt }]
@@ -85,20 +58,19 @@ app.post("/api/gemini", async (req, res) => {
     });
 
     const data = await response.json();
-    console.log("Gemini API 응답:", JSON.stringify(data, null, 2));
     
-    // Gemini API에서 오류가 발생하면 그대로 응답 반환
+    // Do not forward provider error details that could expose credentials.
     if (!response.ok) {
-      console.error("API error:", data);
-      return res.status(response.status).json(data);
+      console.error("Gemini API request failed with status:", response.status);
+      return res.status(response.status).json({ error: "Gemini API request failed" });
     }
     
     // 정상적인 모델 응답 반환
     res.json(data);
 
   } catch (err) {
-    console.error("Failed to Gemini:", err);
-    res.status(500).json({ error: "Failed to Gemini", details: err.message });
+    console.error("Gemini API request failed");
+    res.status(500).json({ error: "Failed to Gemini" });
   }
 });
 
