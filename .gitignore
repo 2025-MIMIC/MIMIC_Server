@@ -1,0 +1,9 @@
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+
+# Dependencies and local output
+node_modules/
+*.log
+.DS_Store
